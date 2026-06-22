@@ -17,12 +17,7 @@ DEFAULT_ALIAS_ID = os.environ.get('BEDROCK_AGENT_ALIAS_ID', 'TSTALIASID')
 
 @app.route('/')
 def index():
-    return render_template(
-        'index.html',
-        default_agent_id=DEFAULT_AGENT_ID,
-        default_alias_id=DEFAULT_ALIAS_ID,
-        api_gateway_url=API_GATEWAY_URL
-    )
+    return render_template('index.html')
 
 
 @app.route('/new_session', methods=['POST'])
@@ -36,8 +31,6 @@ def chat():
     data = request.get_json(silent=True) or {}
     query = data.get('query', '').strip()
     session_id = data.get('session_id', '').strip()
-    agent_id = data.get('agent_id', DEFAULT_AGENT_ID).strip()
-    alias_id = data.get('alias_id', DEFAULT_ALIAS_ID).strip()
     enable_trace = bool(data.get('enable_trace', False))
     session_state = data.get('session_state') or {}
 
@@ -45,14 +38,12 @@ def chat():
         return jsonify({'error': 'Query cannot be empty.'}), 400
     if not session_id:
         return jsonify({'error': 'Session ID is required.'}), 400
-    if not agent_id:
-        return jsonify({'error': 'Agent ID is required.'}), 400
 
     payload = {
         'query': query,
         'session_id': session_id,
-        'agent_id': agent_id,
-        'alias_id': alias_id,
+        'agent_id': DEFAULT_AGENT_ID,
+        'alias_id': DEFAULT_ALIAS_ID,
         'enable_trace': enable_trace,
         'session_state': session_state
     }
@@ -69,18 +60,18 @@ def chat():
             response['trace'] = result['trace']
         return jsonify(response)
     except requests.exceptions.Timeout:
-        return jsonify({'error': 'Request timed out. The agent took too long to respond.'}), 504
+        return jsonify({'error': 'Request timed out. Please try again.'}), 504
     except requests.exceptions.ConnectionError:
-        return jsonify({'error': 'Could not connect to API Gateway. Check that API_GATEWAY_URL is set correctly.'}), 502
+        return jsonify({'error': 'Could not connect to R-Cafe right now. Please try again.'}), 502
     except requests.exceptions.HTTPError as e:
         error_body = {}
         try:
             error_body = e.response.json()
         except Exception:
             pass
-        return jsonify({'error': error_body.get('error', str(e))}), e.response.status_code
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_body.get('error', 'R-Cafe could not process this request.')}), e.response.status_code
+    except Exception:
+        return jsonify({'error': 'R-Cafe could not process this request. Please try again.'}), 500
 
 
 if __name__ == '__main__':
