@@ -255,3 +255,40 @@ DynamoDB only receives clean normalized values.
 4. Move final date/time normalization and validation into backend action Lambda.
 5. Store special requests in `special_requests` on the same DynamoDB booking item.
 6. Keep manager ticketing/callback as a future workflow until an actual backend function exists.
+
+## Booking Status And Validity Model
+
+The booking table should distinguish current reservations from historical or loose test records.
+
+Statuses:
+- `active`: valid current booking in the one-month booking window.
+- `closed-executed`: booking date/time has passed; keep as historical, do not present as current.
+- `invalid`: loose/wasted IDs or bad records created during failed slot filling, correction duplicates, placeholder names, missing date/time, missing party size, or internal planner text.
+
+A valid active booking must have all of these fields:
+- `Booking_ID`
+- `Booking_DateTime` in `YYYY-MM-DD HH:MM`
+- `customer_name` with first and last name
+- `party_size` as a positive number
+- `booking_status` as `active`
+
+Operational flags for cleanup/diagnostics:
+- `missing_booking_id`
+- `missing_or_invalid_booking_datetime`
+- `missing_placeholder_or_single_part_customer_name`
+- `missing_or_invalid_party_size`
+- `invalid_party_size`
+- `large_party_requires_manager`
+- `past_booking_datetime`
+- `outside_booking_window`
+- `status_invalid`
+- `status_closed_executed`
+- `unknown_status`
+- `loose_or_wasted_id`
+- `active_candidate`
+
+Lookup/review/update behavior:
+- Search only valid `active` bookings for customer-facing flows.
+- Same customer name can have multiple active bookings; present latest valid active bookings first and ask the user to choose.
+- A Booking ID typed after a search is only a selection, not cancellation permission. Deletion requires an explicit confirmation after showing exact booking details.
+- Corrections after a successful booking must update the same Booking ID, not create a second Booking ID.

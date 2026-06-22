@@ -40,3 +40,16 @@ The backend Lambda is the final validation layer. It accepts common customer for
 ## Current/Future Boundary
 
 Current system is a single-agent booking and visit-needs assistant. Menu RAG, weather, nearby places, clothing advice, manager ticketing, missed-call verification, and automated callback are future integrations unless connected with real backend tools.
+
+## Booking Status And Cleanup Flags
+
+New standard bookings are written with `booking_status = active`. Customer-facing lookup and update paths should use only valid active bookings inside the one-month booking window.
+
+Supported status values:
+- `active`: current valid booking.
+- `closed-executed`: booking date/time has passed.
+- `invalid`: incomplete, placeholder, duplicate correction-created, or otherwise loose/wasted record.
+
+A valid booking requires `Booking_ID`, normalized `Booking_DateTime`, first and last `customer_name`, positive `party_size`, and active status. The Lambda includes diagnostic flag logic for cleanup decisions, including missing fields, placeholder/single-part names, past bookings, outside-window bookings, invalid party sizes, and unknown statuses.
+
+Deletion safety belongs primarily in the prompt/action flow: choosing a Booking ID after search is not enough. The agent must show the exact booking and ask for explicit cancellation confirmation before calling `deleteBooking`.

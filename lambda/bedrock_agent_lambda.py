@@ -15,6 +15,9 @@ CLOSING_HOUR = 23  # 11:00 PM
 MANAGER_CONTACT = "9916437369"
 RESTAURANT_TIMEZONE = os.environ.get("RESTAURANT_TIMEZONE", "Asia/Kolkata")
 DEFAULT_BOOKING_YEAR = int(os.environ.get("DEFAULT_BOOKING_YEAR", "2026"))
+BOOKING_STATUS_ACTIVE = "active"
+BOOKING_STATUS_CLOSED_EXECUTED = "closed-executed"
+BOOKING_STATUS_INVALID = "invalid"
 
 
 def restaurant_now():
@@ -72,8 +75,11 @@ def is_invalid_customer_name(value):
     }
     if normalized in placeholder_names:
         return True
+    parts = re.findall(r"[a-z][a-z.'-]*", normalized)
+    if len(parts) < 2:
+        return True
     letters_only = re.sub(r"[^a-z]", "", normalized)
-    if len(letters_only) < 2:
+    if len(letters_only) < 4:
         return True
     if len(set(letters_only)) == 1 and len(letters_only) >= 3:
         return True
@@ -84,7 +90,7 @@ def is_invalid_customer_name(value):
 
 def validate_customer_name(value):
     if is_invalid_customer_name(value):
-        return False, "Reservation failed. Please provide a real customer name for the booking."
+        return False, "Reservation failed. Please provide the customer first and last name for the booking."
     return True, "Valid"
 
 
@@ -92,6 +98,128 @@ def compact_text(value, max_len=500):
     if is_invalid_planner_value(value):
         return None
     return str(value).strip()[:max_len]
+
+
+def normalize_customer_lookup_name(value):
+    if value is None:
+        return None
+    text = re.sub(r"\s+", " ", str(value).strip())
+    return text or None
+
+
+def customer_name_variants(value):
+    base = normalize_customer_lookup_name(value)
+    if not base:
+        return []
+    variants = [base, base.lower(), base.title(), base.upper()]
+    seen = set()
+    result = []
+    for candidate in variants:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            result.append(candidate)
+    return result
+
+
+def parse_booking_datetime(value):
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo(RESTAURANT_TIMEZONE))
+    except Exception:
+        return None
+
+
+def is_valid_booking_item(item):
+    if not isinstance(item, dict):
+        return False
+    if is_invalid_planner_value(item.get('Booking_ID')) or is_invalid_planner_value(item.get('Booking_DateTime')):
+        return False
+    if is_invalid_customer_name(item.get('customer_name')):
+        return False
+    if str(item.get('booking_status', 'active')).strip().lower() != BOOKING_STATUS_ACTIVE:
+        return False
+    try:
+        size = int(item.get('party_size'))
+        if size <= 0:
+            return False
+    except Exception:
+        return False
+    booking_dt = parse_booking_datetime(item.get('Booking_DateTime'))
+    if not booking_dt:
+        return False
+    now = restaurant_now()
+    max_booking_date = add_one_month(now.date())
+    return now <= booking_dt and booking_dt.date() <= max_booking_date
+
+
+def booking_status_flags(item):
+    flags = []
+    if not isinstance(item, dict):
+        return ["invalid_record"]
+
+    status = str(item.get('booking_status', BOOKING_STATUS_ACTIVE)).strip().lower()
+    if status == BOOKING_STATUS_INVALID:
+        flags.append("status_invalid")
+    elif status == BOOKING_STATUS_CLOSED_EXECUTED:
+        flags.append("status_closed_executed")
+    elif status != BOOKING_STATUS_ACTIVE:
+        flags.append("unknown_status")
+
+    if is_invalid_planner_value(item.get('Booking_ID')):
+        flags.append("missing_booking_id")
+    if is_invalid_planner_value(item.get('Booking_DateTime')) or not parse_booking_datetime(item.get('Booking_DateTime')):
+        flags.append("missing_or_invalid_booking_datetime")
+    if is_invalid_customer_name(item.get('customer_name')):
+        flags.append("missing_placeholder_or_single_part_customer_name")
+    try:
+        size = int(item.get('party_size'))
+        if size <= 0:
+            flags.append("invalid_party_size")
+        elif size > MAX_PARTY_SIZE:
+            flags.append("large_party_requires_manager")
+    except Exception:
+        flags.append("missing_or_invalid_party_size")
+
+    booking_dt = parse_booking_datetime(item.get('Booking_DateTime'))
+    if booking_dt:
+        now = restaurant_now()
+        if booking_dt < now:
+            flags.append("past_booking_datetime")
+        if booking_dt.date() > add_one_month(now.date()):
+            flags.append("outside_booking_window")
+
+    if any(flag.startswith("missing_") or flag.startswith("status_invalid") for flag in flags):
+        flags.append("loose_or_wasted_id")
+    if not flags:
+        flags.append("active_candidate")
+    return flags
+
+
+def valid_booking_sort_key(item):
+    parsed = parse_booking_datetime(item.get('Booking_DateTime'))
+    return parsed or datetime.min.replace(tzinfo=ZoneInfo(RESTAURANT_TIMEZONE))
+
+
+def query_bookings_by_customer(table, customer_name, booking_date_time=None):
+    seen = set()
+    matches = []
+    for candidate in customer_name_variants(customer_name):
+        if booking_date_time:
+            response = table.query(
+                IndexName='r-cafe-index',
+                KeyConditionExpression=Key('customer_name').eq(candidate) & Key('Booking_DateTime').eq(booking_date_time)
+            )
+        else:
+            response = table.query(
+                IndexName='r-cafe-index',
+                KeyConditionExpression=Key('customer_name').eq(candidate)
+            )
+        for item in response.get('Items', []):
+            key = (item.get('Booking_ID'), item.get('Booking_DateTime'))
+            if key not in seen and is_valid_booking_item(item):
+                seen.add(key)
+                matches.append(item)
+    matches.sort(key=valid_booking_sort_key, reverse=True)
+    return matches
 
 
 MONTHS = {
@@ -427,7 +555,8 @@ def lambda_handler(event, context):
                         'Booking_ID': booking_id,
                         'Booking_DateTime': booking_date_time,
                         'customer_name': customer_name,
-                        'party_size': int(party_size)
+                        'party_size': int(party_size),
+                        'booking_status': BOOKING_STATUS_ACTIVE
                     }
                     if special_requests:
                         item['special_requests'] = special_requests
@@ -520,26 +649,16 @@ def lambda_handler(event, context):
                     old_res = table.get_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': current_date_time})
                     old_item = old_res.get('Item')
                 elif lookup_customer_name:
-                    if current_date_time:
-                        lookup_res = table.query(
-                            IndexName='r-cafe-index',
-                            KeyConditionExpression=Key('customer_name').eq(lookup_customer_name) & Key('Booking_DateTime').eq(current_date_time)
-                        )
-                    else:
-                        lookup_res = table.query(
-                            IndexName='r-cafe-index',
-                            KeyConditionExpression=Key('customer_name').eq(lookup_customer_name)
-                        )
-                    matches = lookup_res.get('Items', [])
+                    matches = query_bookings_by_customer(table, lookup_customer_name, current_date_time)
                     if len(matches) == 1:
                         old_item = matches[0]
                         booking_id = old_item['Booking_ID']
                         current_date_time = old_item['Booking_DateTime']
                     elif len(matches) > 1:
                         match_list = [f"ID: {i['Booking_ID']} on {i['Booking_DateTime']}" for i in matches]
-                        response_body = "Multiple bookings found. Please choose which booking to update: " + ", ".join(match_list)
+                        response_body = "Multiple valid bookings found in the active booking window. Please choose which booking to update: " + ", ".join(match_list)
                     else:
-                        response_body = f"No reservation found under name {lookup_customer_name}."
+                        response_body = f"No valid reservation found under name {lookup_customer_name} in the active booking window."
                 elif booking_id:
                     lookup_res = table.query(KeyConditionExpression=Key('Booking_ID').eq(booking_id))
                     matches = lookup_res.get('Items', [])
@@ -583,7 +702,8 @@ def lambda_handler(event, context):
                                 'Booking_ID': booking_id,
                                 'Booking_DateTime': new_date_time,
                                 'customer_name': final_customer_name,
-                                'party_size': int(final_size)
+                                'party_size': int(final_size),
+                                'booking_status': BOOKING_STATUS_ACTIVE
                             }
                             if special_requests:
                                 new_item['special_requests'] = special_requests
@@ -595,8 +715,8 @@ def lambda_handler(event, context):
                             )
                             table.delete_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': current_date_time})
                         else:
-                            update_expr = "SET party_size = :p, customer_name = :c"
-                            expr_values = {':p': int(final_size), ':c': final_customer_name}
+                            update_expr = "SET party_size = :p, customer_name = :c, booking_status = :status"
+                            expr_values = {':p': int(final_size), ':c': final_customer_name, ':status': BOOKING_STATUS_ACTIVE}
                             if special_requests:
                                 update_expr += ", special_requests = :s"
                                 expr_values[':s'] = special_requests
@@ -630,17 +750,12 @@ def lambda_handler(event, context):
             if not has_fields:
                 response_body = "Reservation lookup failed. Customer name is required."
             else:
-                # Using your newly added console index name
-                response = table.query(
-                    IndexName='r-cafe-index',
-                    KeyConditionExpression=Key('customer_name').eq(customer_name)
-                )
-                items = response.get('Items', [])
+                items = query_bookings_by_customer(table, customer_name)
                 if not items:
-                    response_body = f"No reservation strings found under name: {customer_name}"
+                    response_body = f"No valid reservation found under name {customer_name} in the active booking window."
                 else:
-                    matches = [f"ID: {i['Booking_ID']} on {i['Booking_DateTime']}" for i in items]
-                    response_body = f"Found the following bookings for {customer_name}: " + ", ".join(matches)
+                    matches = [f"ID: {i['Booking_ID']} on {i['Booking_DateTime']} for {i['customer_name']} with party size {i['party_size']}" for i in items]
+                    response_body = f"Found the following valid bookings for {customer_name}, latest first: " + ", ".join(matches)
 
         else:
             response_body = f"Unknown action: {function_name}"
