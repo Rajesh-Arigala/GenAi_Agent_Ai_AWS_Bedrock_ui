@@ -4,7 +4,7 @@ import os
 import calendar
 import re
 import boto3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from boto3.dynamodb.conditions import Key
 
@@ -14,6 +14,7 @@ OPENING_HOUR = 11  # 11:00 AM
 CLOSING_HOUR = 23  # 11:00 PM
 MANAGER_CONTACT = "9916437369"
 RESTAURANT_TIMEZONE = os.environ.get("RESTAURANT_TIMEZONE", "Asia/Kolkata")
+DEFAULT_BOOKING_YEAR = int(os.environ.get("DEFAULT_BOOKING_YEAR", "2026"))
 
 
 def restaurant_now():
@@ -91,6 +92,179 @@ def compact_text(value, max_len=500):
     if is_invalid_planner_value(value):
         return None
     return str(value).strip()[:max_len]
+
+
+MONTHS = {
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+}
+
+WEEKDAYS = {
+    "mon": 0, "monday": 0,
+    "tue": 1, "tues": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2,
+    "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4,
+    "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
+}
+
+
+def strip_ordinals(value):
+    return re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", value, flags=re.IGNORECASE)
+
+
+def clean_date_text(value):
+    text = clean_param(value) or ""
+    text = strip_ordinals(text.lower())
+    text = text.replace(",", " ").replace(".", " ")
+    text = re.sub(r"\b(the|of|for|on)\b", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def normalize_booking_date(value):
+    if is_invalid_planner_value(value):
+        return None, "Reservation failed. Missing required booking date."
+
+    raw = clean_param(value)
+    text = clean_date_text(raw)
+    today = restaurant_now().date()
+    current_year = DEFAULT_BOOKING_YEAR
+    parsed_date = None
+
+    if text in ("today",):
+        parsed_date = today
+    elif text in ("tomorrow", "tomorow", "tmrw", "tom"):
+        parsed_date = today + timedelta(days=1)
+    elif text in ("day after", "day after tomorrow", "after tomorrow"):
+        parsed_date = today + timedelta(days=2)
+
+    if parsed_date is None:
+        next_weekday = re.fullmatch(r"next\s+([a-z]+)", text)
+        if next_weekday and next_weekday.group(1) in WEEKDAYS:
+            target = WEEKDAYS[next_weekday.group(1)]
+            delta = (target - today.weekday()) % 7
+            parsed_date = today + timedelta(days=delta or 7)
+
+    if parsed_date is None and text in WEEKDAYS:
+        target = WEEKDAYS[text]
+        delta = (target - today.weekday()) % 7
+        parsed_date = today + timedelta(days=delta or 7)
+
+    if parsed_date is None:
+        iso_match = re.fullmatch(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", text)
+        if iso_match:
+            year, month, day = map(int, iso_match.groups())
+            try:
+                parsed_date = date(year, month, day)
+            except ValueError:
+                return None, "Reservation failed. Invalid booking date."
+
+    if parsed_date is None:
+        slash_match = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})(?:[-/](20\d{2}))?", text)
+        if slash_match:
+            first = int(slash_match.group(1))
+            second = int(slash_match.group(2))
+            year = int(slash_match.group(3) or current_year)
+            # Indian flow: prefer DD/MM. If impossible and second > 12, treat as MM/DD.
+            day, month = first, second
+            if month > 12 and first <= 12:
+                month, day = first, second
+            try:
+                parsed_date = date(year, month, day)
+            except ValueError:
+                return None, "Reservation failed. Invalid booking date."
+
+    if parsed_date is None:
+        parts = text.split()
+        if len(parts) in (2, 3):
+            first, second = parts[0], parts[1]
+            year = int(parts[2]) if len(parts) == 3 and re.fullmatch(r"20\d{2}", parts[2]) else current_year
+            try:
+                if first.isdigit() and second in MONTHS:
+                    parsed_date = date(year, MONTHS[second], int(first))
+                elif first in MONTHS and second.isdigit():
+                    parsed_date = date(year, MONTHS[first], int(second))
+            except ValueError:
+                return None, "Reservation failed. Invalid booking date."
+
+    if parsed_date is None and re.fullmatch(r"\d{1,2}", text):
+        return None, f"Reservation failed. Please provide the month for {raw}."
+
+    if parsed_date is None:
+        return None, "Reservation failed. Invalid booking date. Please provide a date like 17/7, 17 July, tomorrow, or YYYY-MM-DD."
+
+    return parsed_date.isoformat(), "Valid"
+
+
+def normalize_booking_time(value):
+    if is_invalid_planner_value(value):
+        return None, "Reservation failed. Missing required booking time."
+
+    raw = clean_param(value)
+    text = raw.lower().strip()
+    text = re.sub(r"\s+", "", text)
+    text = text.replace(".", ":")
+
+    if text == "noon":
+        return "12:00", "Valid"
+    if text == "midnight":
+        return "00:00", "Valid"
+
+    meridian_match = re.fullmatch(r"(\d{1,2})(?::(\d{1,2}))?(am|pm)", text)
+    if meridian_match:
+        hour = int(meridian_match.group(1))
+        minute = int(meridian_match.group(2) or 0)
+        meridian = meridian_match.group(3)
+        if hour < 1 or hour > 12 or minute > 59:
+            return None, "Reservation failed. Invalid booking time."
+        if meridian == "am":
+            hour = 0 if hour == 12 else hour
+        else:
+            hour = 12 if hour == 12 else hour + 12
+        return f"{hour:02d}:{minute:02d}", "Valid"
+
+    compact_meridian_match = re.fullmatch(r"(\d{1,2})(\d{2})(am|pm)", text)
+    if compact_meridian_match:
+        hour = int(compact_meridian_match.group(1))
+        minute = int(compact_meridian_match.group(2))
+        meridian = compact_meridian_match.group(3)
+        if hour < 1 or hour > 12 or minute > 59:
+            return None, "Reservation failed. Invalid booking time."
+        if meridian == "am":
+            hour = 0 if hour == 12 else hour
+        else:
+            hour = 12 if hour == 12 else hour + 12
+        return f"{hour:02d}:{minute:02d}", "Valid"
+
+    military_match = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]?\d)", text)
+    if military_match:
+        return f"{int(military_match.group(1)):02d}:{int(military_match.group(2)):02d}", "Valid"
+
+    if re.fullmatch(r"\d{1,2}", text):
+        return None, "Reservation failed. Please clarify whether the time is AM or PM."
+
+    return None, "Reservation failed. Invalid booking time. Please use a time like 7pm, 19:00, or 7:30 PM."
+
+
+def normalize_reservation_inputs(booking_date, booking_time):
+    normalized_date, date_msg = normalize_booking_date(booking_date)
+    if not normalized_date:
+        return None, None, date_msg
+    normalized_time, time_msg = normalize_booking_time(booking_time)
+    if not normalized_time:
+        return None, None, time_msg
+    return normalized_date, normalized_time, "Valid"
 
 
 def parse_update_request(update_type, new_value, update_details):
@@ -222,11 +396,16 @@ def lambda_handler(event, context):
 
             has_fields, missing_msg = validate_required_fields(customer_name, booking_date, booking_time, party_size)
             has_name, name_msg = validate_customer_name(customer_name)
+            normalized_date, normalized_time, normalize_msg = normalize_reservation_inputs(booking_date, booking_time) if has_fields else (None, None, missing_msg)
             if not has_fields:
                 response_body = missing_msg
             elif not has_name:
                 response_body = name_msg
+            elif not normalized_date or not normalized_time:
+                response_body = normalize_msg
             else:
+                booking_date = normalized_date
+                booking_time = normalized_time
                 # Policy barrier checks
                 is_valid, validation_msg = validate_reservation(booking_date, booking_time, party_size)
                 if not is_valid:
@@ -264,9 +443,14 @@ def lambda_handler(event, context):
             booking_date = params.get('bookingDate')
             booking_time = params.get('bookingTime')
             has_fields, missing_msg = validate_required_fields(booking_id, booking_date, booking_time)
+            normalized_date, normalized_time, normalize_msg = normalize_reservation_inputs(booking_date, booking_time) if has_fields else (None, None, missing_msg)
             if not has_fields:
                 response_body = missing_msg
+            elif not normalized_date or not normalized_time:
+                response_body = normalize_msg
             else:
+                booking_date = normalized_date
+                booking_time = normalized_time
                 booking_date_time = f"{booking_date} {booking_time}"
 
                 response = table.get_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': booking_date_time})
@@ -298,13 +482,35 @@ def lambda_handler(event, context):
             lookup_customer_name = lookup_customer_name or parsed_lookup_name
             special_requests = compact_text(params.get('specialRequests') or params.get('special_requests') or parsed_special_requests)
 
+            if booking_date and booking_time:
+                normalized_date, normalized_time, normalize_msg = normalize_reservation_inputs(booking_date, booking_time)
+                if normalized_date and normalized_time:
+                    booking_date = normalized_date
+                    booking_time = normalized_time
+                else:
+                    response_body = normalize_msg
+            if new_date:
+                normalized_new_date, normalize_msg = normalize_booking_date(new_date)
+                if normalized_new_date:
+                    new_date = normalized_new_date
+                else:
+                    response_body = normalize_msg
+            if new_time:
+                normalized_new_time, normalize_msg = normalize_booking_time(new_time)
+                if normalized_new_time:
+                    new_time = normalized_new_time
+                else:
+                    response_body = normalize_msg
+
             # If the agent sends customerName while the booking ID is missing, treat it as a lookup name,
             # not as a requested name change. This handles: "I forgot the ID, check my name Raj".
             if not booking_id and not lookup_customer_name and customer_name:
                 lookup_customer_name = customer_name
                 customer_name = None
 
-            if not any([new_date, new_time, party_size, customer_name, special_requests]):
+            if response_body != "Function routing execution failed":
+                pass
+            elif not any([new_date, new_time, party_size, customer_name, special_requests]):
                 response_body = "Update failed. Please provide a new name, new date, new time, new party size, or special request details."
             else:
                 current_date_time = f"{booking_date} {booking_time}" if booking_date and booking_time else None
@@ -406,9 +612,14 @@ def lambda_handler(event, context):
             booking_date = params.get('bookingDate')
             booking_time = params.get('bookingTime')
             has_fields, missing_msg = validate_required_fields(booking_id, booking_date, booking_time)
+            normalized_date, normalized_time, normalize_msg = normalize_reservation_inputs(booking_date, booking_time) if has_fields else (None, None, missing_msg)
             if not has_fields:
                 response_body = missing_msg
+            elif not normalized_date or not normalized_time:
+                response_body = normalize_msg
             else:
+                booking_date = normalized_date
+                booking_time = normalized_time
                 booking_date_time = f"{booking_date} {booking_time}"
                 table.delete_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': booking_date_time})
                 response_body = f"Reservation {booking_id} on {booking_date_time} has been completely removed."

@@ -15,6 +15,7 @@ DEFAULT_AGENT_ID = os.environ.get('BEDROCK_AGENT_ID', 'YZTK3R4TM6')
 DEFAULT_ALIAS_ID = os.environ.get('BEDROCK_AGENT_ALIAS_ID', 'TSTALIASID')
 
 
+
 @app.route('/')
 def index():
     return render_template('index.html')

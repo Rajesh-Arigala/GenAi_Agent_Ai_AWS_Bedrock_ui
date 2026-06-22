@@ -411,9 +411,16 @@
       <select class="language-select" id="language-select" aria-label="Preferred language" onchange="setPreferredLanguage(this.value)">
         <option value="en-IN">English</option>
         <option value="hi-IN">Hindi</option>
+        <option value="bn-IN">Bengali</option>
+        <option value="mr-IN">Marathi</option>
         <option value="te-IN">Telugu</option>
-        <option value="kn-IN">Kannada</option>
         <option value="ta-IN">Tamil</option>
+        <option value="kn-IN">Kannada</option>
+        <option value="es-ES">Spanish</option>
+        <option value="zh-CN">Chinese</option>
+        <option value="ar">Arabic</option>
+        <option value="fr-FR">French</option>
+        <option value="pt-BR">Portuguese</option>
       </select>
       <button class="header-action" onclick="startNewConversation()">New Chat</button>
     </div>
@@ -426,9 +433,11 @@
         <h2>Welcome to R-Cafe</h2>
         <p>I can help book, find, update, or cancel your table reservation.</p>
         <div class="prompt-grid">
-          <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people tomorrow at 7 PM.')">Book a table</button>
-          <button class="prompt-chip" onclick="usePrompt('Book a table with wheelchair access and quiet seating.')">Add seating needs</button>
-          <button class="prompt-chip" onclick="usePrompt('I need to update my reservation.')">Update a reservation</button>
+          <button class="prompt-chip" onclick="usePrompt('Create booking for 4 people tomorrow at 7 PM.')">Create booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Update booking details.')">Update booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Delete booking.')">Delete booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Get booking details.')">Get booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Special needs for your booking: wheelchair access, elderly parking assistance, or high chair.')">Special needs for your booking</button>
         </div>
       </div>
     </div>
@@ -444,9 +453,16 @@
     const languageNames = {
       "en-IN": "English",
       "hi-IN": "Hindi",
+      "bn-IN": "Bengali",
+      "mr-IN": "Marathi",
       "te-IN": "Telugu",
+      "ta-IN": "Tamil",
       "kn-IN": "Kannada",
-      "ta-IN": "Tamil"
+      "es-ES": "Spanish",
+      "zh-CN": "Chinese",
+      "ar": "Arabic",
+      "fr-FR": "French",
+      "pt-BR": "Portuguese"
     };
     const dummyLocation = {
       mode: "dummy",
