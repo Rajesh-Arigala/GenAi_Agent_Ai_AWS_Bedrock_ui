@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>R-Cafe Booking Assistant</title>
+  <style>
+    :root {
+      --navy: #232f3e;
+      --navy-soft: #34465c;
+      --orange: #ff9900;
+      --orange-dark: #e68a00;
+      --bg: #f0f2f5;
+      --panel: #ffffff;
+      --line: #dde3ea;
+      --text: #111827;
+      --muted: #6b7280;
+      --soft: #f8fafc;
+      --danger: #b91c1c;
+      --success: #1f7a3a;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 68px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--orange);
+      color: #111;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    header h1 { font-size: 19px; line-height: 1.2; font-weight: 700; }
+    header .subtitle { font-size: 12px; color: #c6d2df; margin-top: 3px; }
+
+    .status-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #dce7f3;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.18);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      flex: 1;
+      min-height: 0;
+    }
+
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      padding: 18px;
+    }
+
+    .layer {
+      border-bottom: 1px solid #edf1f5;
+      padding: 0 0 18px;
+      margin-bottom: 18px;
+    }
+
+    .layer:last-child {
+      border-bottom: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .layer-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .layer-title h2 {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .pill {
+      border-radius: 999px;
+      background: #eef2f7;
+      color: #4b5563;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      color: #374151;
+      font-weight: 650;
+    }
+
+    input, select, textarea {
+      font: inherit;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    #query-input:focus {
+      border-color: var(--orange);
+      box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.14);
+    }
+
+    .readout {
+      min-height: 34px;
+      padding: 8px 9px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: var(--soft);
+      color: #374151;
+      font-size: 12px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .readout.mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 8px 13px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 750;
+      cursor: pointer;
+      border: 0;
+      transition: background 0.15s, opacity 0.15s, transform 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn:active:not(:disabled) { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary { background: var(--orange); color: #111; }
+    .btn-primary:hover:not(:disabled) { background: var(--orange-dark); }
+    .btn-secondary { background: #e5e7eb; color: #374151; }
+    .btn-secondary:hover:not(:disabled) { background: #d1d5db; }
+    .btn-full { width: 100%; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #374151;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .toggle-row input { width: 16px; height: 16px; accent-color: var(--orange); }
+
+    .attribute-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .attribute {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      font-size: 12px;
+    }
+
+    .attribute span:first-child {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .attribute span:last-child {
+      color: #243244;
+      word-break: break-word;
+    }
+
+    .chat-area {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background: var(--bg);
+    }
+
+    .chat-topbar {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+    }
+
+    .chat-topbar h2 {
+      font-size: 15px;
+      font-weight: 800;
+      color: #243244;
+    }
+
+    .chat-topbar .meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .messages {
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .welcome {
+      max-width: 780px;
+      margin: 42px auto 0;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .welcome-badge {
+      width: 58px;
+      height: 58px;
+      border-radius: 10px;
+      background: var(--navy);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 16px;
+      font-size: 25px;
+      font-weight: 800;
+      border-bottom: 4px solid var(--orange);
+    }
+
+    .welcome h3 {
+      font-size: 22px;
+      color: #27384b;
+      margin-bottom: 8px;
+    }
+
+    .welcome p {
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 620px;
+      margin: 0 auto;
+    }
+
+    .prompt-grid {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .prompt-chip {
+      border: 1px solid #dde3ea;
+      background: #fff;
+      color: #374151;
+      border-radius: 8px;
+      padding: 11px 12px;
+      text-align: left;
+      font-size: 13px;
+      line-height: 1.35;
+      cursor: pointer;
+    }
+
+    .prompt-chip:hover {
+      border-color: var(--orange);
+      background: #fffaf2;
+    }
+
+    .message {
+      max-width: min(760px, 74%);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.agent, .message.error { align-self: flex-start; align-items: flex-start; }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
+    }
+
+    .message.user .bubble {
+      background: var(--navy);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.agent .bubble {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid #e5e7eb;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message.error .bubble {
+      background: #fef2f2;
+      color: var(--danger);
+      border: 1px solid #fca5a5;
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg-label {
+      font-size: 11px;
+      color: #8b95a1;
+      font-weight: 750;
+    }
+
+    .typing-bubble {
+      display: flex;
+      gap: 4px;
+      padding: 12px 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      border-bottom-left-radius: 4px;
+      width: fit-content;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: #9ca3af;
+      border-radius: 50%;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-6px); }
+    }
+
+    .input-bar {
+      padding: 16px 24px;
+      background: #fff;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    #query-input {
+      flex: 1;
+      min-height: 44px;
+      max-height: 128px;
+      padding: 11px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      resize: none;
+      outline: none;
+      line-height: 1.5;
+      background: #fff;
+    }
+
+    #send-btn {
+      min-width: 94px;
+      min-height: 44px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .trace-panel {
+      display: none;
+      max-height: 180px;
+      overflow: auto;
+      margin: 0 24px 16px;
+      padding: 12px;
+      border: 1px solid #d7dee8;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #dbeafe;
+      font-size: 11px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 920px) {
+      body { height: auto; min-height: 100vh; }
+      header { align-items: flex-start; }
+      .status-strip { display: none; }
+      .layout {
+        grid-template-columns: 1fr;
+        min-height: calc(100vh - 68px);
+      }
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        max-height: none;
+      }
+      .chat-area { min-height: 620px; }
+      .prompt-grid { grid-template-columns: 1fr; }
+      .message { max-width: 88%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark">RC</div>
+      <div>
+        <h1>R-Cafe Booking Assistant</h1>
+        <div class="subtitle">Amazon Bedrock agent connected through API Gateway</div>
+      </div>
+    </div>
+    <div class="status-strip">
+      <span class="status-dot"></span>
+      <span id="header-status">Ready for web testing</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section class="layer">
+        <div class="layer-title">
+          <h2>Connection Layer</h2>
+          <span class="pill">Live API</span>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="agent-id">Agent ID</label>
+            <input type="text" id="agent-id" value="{{ default_agent_id }}" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="alias-id">Alias ID</label>
+            <input type="text" id="alias-id" value="{{ default_alias_id }}" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label>API Gateway</label>
+            <div class="readout mono">{{ api_gateway_url }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="layer">
+        <div class="layer-title">
+          <h2>Session Layer</h2>
+          <span class="pill" id="session-pill">Idle</span>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Current Session ID</label>
+            <div class="readout mono" id="session-id-display">-</div>
+          </div>
+          <button class="btn btn-primary btn-full" id="new-session-btn" onclick="createNewSession()">New Session</button>
+          <div class="form-group">
+            <label for="existing-session-input">Use Existing Session ID</label>
+            <input type="text" id="existing-session-input" placeholder="Paste session ID" autocomplete="off" />
+          </div>
+          <button class="btn btn-secondary btn-full" onclick="useExistingSession()">Load Session</button>
+        </div>
+      </section>
+
+      <section class="layer">
+        <div class="layer-title">
+          <h2>Context Layer</h2>
+          <span class="pill">No GPS</span>
+        </div>
+        <div class="attribute-list">
+          <div class="attribute"><span>Timezone</span><span id="ctx-timezone">-</span></div>
+          <div class="attribute"><span>Locale</span><span id="ctx-locale">-</span></div>
+          <div class="attribute"><span>Device</span><span id="ctx-device">-</span></div>
+          <div class="attribute"><span>Screen</span><span id="ctx-screen">-</span></div>
+          <div class="attribute"><span>Location</span><span id="ctx-location">Dummy: R-Cafe primary branch</span></div>
+          <div class="attribute"><span>Updated</span><span id="ctx-updated">-</span></div>
+        </div>
+      </section>
+
+      <section class="layer">
+        <div class="layer-title">
+          <h2>Runtime Layer</h2>
+          <span class="pill">Agent</span>
+        </div>
+        <div class="form-grid">
+          <label class="toggle-row" for="enable-trace">
+            <span>Enable trace logging</span>
+            <input type="checkbox" id="enable-trace" />
+          </label>
+        </div>
+      </section>
+    </aside>
+
+    <main class="chat-area">
+      <div class="chat-topbar">
+        <div>
+          <h2>Reservation Workspace</h2>
+          <div class="meta" id="chat-meta">Create or load a session to start.</div>
+        </div>
+        <button class="btn btn-secondary" onclick="clearChat(true)">Clear Chat</button>
+      </div>
+
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome-msg">
+          <div class="welcome-badge">RC</div>
+          <h3>R-Cafe table booking console</h3>
+          <p>Use this web app to test the Bedrock agent path before moving the frontend to Render and later adding menu retrieval from S3/RAG.</p>
+          <div class="prompt-grid">
+            <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people under Raj tomorrow at 7 PM.')">Book a table for tomorrow evening.</button>
+            <button class="prompt-chip" onclick="usePrompt('Find my booking under the name Raj.')">Find a booking by customer name.</button>
+            <button class="prompt-chip" onclick="usePrompt('I need a table for 14 people tonight at 8 PM.')">Test the large-party manager handoff.</button>
+          </div>
+        </div>
+      </div>
+
+      <pre class="trace-panel" id="trace-panel"></pre>
+
+      <div class="input-bar">
+        <textarea id="query-input" rows="1" placeholder="Ask R-Cafe to book, find, update, or cancel a table..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="btn btn-primary" id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let currentSessionId = null;
+    const dummyLocation = {
+      mode: "dummy",
+      label: "R-Cafe primary branch",
+      city: "Not collected",
+      permissionRequired: "false",
+      gpsUsed: "false"
+    };
+
+    function autoResize(el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 128) + "px";
+    }
+
+    function handleKey(e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function detectDeviceType() {
+      const width = window.innerWidth;
+      if (width < 768) return "mobile-web";
+      if (width < 1100) return "tablet-web";
+      return "desktop-web";
+    }
+
+    function buildSessionState() {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown";
+      const locale = navigator.language || "unknown";
+      const timestamp = new Date().toISOString();
+      return {
+        sessionAttributes: {
+          application: "r-cafe-render-ui",
+          channel: "web",
+          timezone,
+          locale,
+          deviceType: detectDeviceType(),
+          screenSize: `${window.screen.width}x${window.screen.height}`,
+          currentTimestamp: timestamp,
+          currentTimestampUtc: timestamp,
+          locationMode: dummyLocation.mode,
+          locationLabel: dummyLocation.label,
+          locationCity: dummyLocation.city,
+          locationPermissionRequired: dummyLocation.permissionRequired,
+          gpsUsed: dummyLocation.gpsUsed
+        }
+      };
+    }
+
+    function refreshContextReadout() {
+      const attrs = buildSessionState().sessionAttributes;
+      document.getElementById("ctx-timezone").textContent = attrs.timezone;
+      document.getElementById("ctx-locale").textContent = attrs.locale;
+      document.getElementById("ctx-device").textContent = attrs.deviceType;
+      document.getElementById("ctx-screen").textContent = attrs.screenSize;
+      document.getElementById("ctx-location").textContent = `${attrs.locationLabel} (${attrs.locationMode}, no GPS)`;
+      document.getElementById("ctx-updated").textContent = new Date(attrs.currentTimestamp).toLocaleString();
+    }
+
+    function setSession(id, type) {
+      currentSessionId = id;
+      document.getElementById("session-id-display").textContent = id;
+      document.getElementById("session-pill").textContent = type === "new" ? "New" : "Loaded";
+      document.getElementById("chat-meta").textContent = `Session active: ${id}`;
+      document.getElementById("header-status").textContent = "Session active";
+      clearChat(false);
+    }
+
+    async function createNewSession() {
+      const btn = document.getElementById("new-session-btn");
+      btn.disabled = true;
+      btn.textContent = "Creating...";
+      try {
+        const res = await fetch("/new_session", { method: "POST" });
+        const data = await res.json();
+        setSession(data.session_id, "new");
+      } catch (e) {
+        appendMessage("error", "Failed to create session: " + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "New Session";
+      }
+    }
+
+    function useExistingSession() {
+      const val = document.getElementById("existing-session-input").value.trim();
+      if (!val) {
+        appendMessage("error", "Please paste a session ID first.");
+        return;
+      }
+      setSession(val, "existing");
+    }
+
+    function clearChat(showWelcome) {
+      const container = document.getElementById("messages");
+      container.innerHTML = "";
+      document.getElementById("trace-panel").style.display = "none";
+      document.getElementById("trace-panel").textContent = "";
+      if (showWelcome) {
+        container.innerHTML = `
+          <div class="welcome" id="welcome-msg">
+            <div class="welcome-badge">RC</div>
+            <h3>R-Cafe table booking console</h3>
+            <p>Use this web app to test the Bedrock agent path before moving the frontend to Render and later adding menu retrieval from S3/RAG.</p>
+            <div class="prompt-grid">
+              <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people under Raj tomorrow at 7 PM.')">Book a table for tomorrow evening.</button>
+              <button class="prompt-chip" onclick="usePrompt('Find my booking under the name Raj.')">Find a booking by customer name.</button>
+              <button class="prompt-chip" onclick="usePrompt('I need a table for 14 people tonight at 8 PM.')">Test the large-party manager handoff.</button>
+            </div>
+          </div>`;
+      }
+    }
+
+    function usePrompt(text) {
+      const input = document.getElementById("query-input");
+      input.value = text;
+      autoResize(input);
+      input.focus();
+    }
+
+    function appendMessage(role, text) {
+      const welcome = document.getElementById("welcome-msg");
+      if (welcome) welcome.remove();
+
+      const container = document.getElementById("messages");
+      const wrapper = document.createElement("div");
+      wrapper.className = `message ${role}`;
+
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = role === "user" ? "You" : role === "error" ? "System" : "R-Cafe Agent";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(bubble);
+      container.appendChild(wrapper);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function showTyping() {
+      const container = document.getElementById("messages");
+      const wrapper = document.createElement("div");
+      wrapper.className = "message agent";
+      wrapper.id = "typing-indicator";
+      wrapper.innerHTML = `
+        <div class="msg-label">R-Cafe Agent</div>
+        <div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+      container.appendChild(wrapper);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function removeTyping() {
+      const el = document.getElementById("typing-indicator");
+      if (el) el.remove();
+    }
+
+    async function sendMessage() {
+      refreshContextReadout();
+      const queryInput = document.getElementById("query-input");
+      const query = queryInput.value.trim();
+      const agentId = document.getElementById("agent-id").value.trim();
+      const aliasId = document.getElementById("alias-id").value.trim() || "TSTALIASID";
+      const enableTrace = document.getElementById("enable-trace").checked;
+
+      if (!query) return;
+      if (!agentId) {
+        appendMessage("error", "Please enter an Agent ID.");
+        return;
+      }
+      if (!currentSessionId) {
+        appendMessage("error", "Please create or load a session first.");
+        return;
+      }
+
+      queryInput.value = "";
+      queryInput.style.height = "auto";
+      document.getElementById("send-btn").disabled = true;
+      document.getElementById("header-status").textContent = "Agent is responding";
+
+      appendMessage("user", query);
+      showTyping();
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query,
+            session_id: currentSessionId,
+            agent_id: agentId,
+            alias_id: aliasId,
+            enable_trace: enableTrace,
+            session_state: buildSessionState()
+          })
+        });
+
+        const data = await res.json();
+        removeTyping();
+
+        if (!res.ok || data.error) {
+          appendMessage("error", data.error || "Unknown error occurred.");
+        } else {
+          appendMessage("agent", data.response);
+          if (enableTrace && data.trace) {
+            const panel = document.getElementById("trace-panel");
+            panel.style.display = "block";
+            panel.textContent = JSON.stringify(data.trace, null, 2);
+          }
+        }
+      } catch (e) {
+        removeTyping();
+        appendMessage("error", "Network error: " + e.message);
+      } finally {
+        document.getElementById("send-btn").disabled = false;
+        document.getElementById("header-status").textContent = "Ready for web testing";
+        queryInput.focus();
+      }
+    }
+
+    refreshContextReadout();
+    window.addEventListener("resize", refreshContextReadout);
+  </script>
+</body>
+</html>
