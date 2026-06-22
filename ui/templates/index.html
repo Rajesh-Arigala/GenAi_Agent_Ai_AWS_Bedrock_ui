@@ -70,6 +70,14 @@
       color: #c6d2df;
     }
 
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .language-select,
     .header-action {
       border: 1px solid rgba(255, 255, 255, 0.34);
       background: transparent;
@@ -80,11 +88,24 @@
       font: inherit;
       font-size: 13px;
       font-weight: 700;
-      cursor: pointer;
       white-space: nowrap;
     }
 
-    .header-action:hover { background: rgba(255, 255, 255, 0.1); }
+    .language-select {
+      max-width: 122px;
+      color-scheme: dark;
+      cursor: pointer;
+    }
+
+    .language-select option {
+      background: var(--navy);
+      color: #fff;
+    }
+
+    .header-action { cursor: pointer; }
+
+    .header-action:hover,
+    .language-select:hover { background: rgba(255, 255, 255, 0.1); }
 
     main {
       flex: 1;
@@ -336,9 +357,16 @@
     @media (max-width: 760px) {
       header {
         align-items: flex-start;
+        flex-wrap: wrap;
         padding: 13px 16px;
       }
 
+      .header-controls {
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      .language-select,
       .header-action {
         min-height: 34px;
         padding: 7px 10px;
@@ -379,7 +407,16 @@
         <div class="subtitle">Table reservations and guest support</div>
       </div>
     </div>
-    <button class="header-action" onclick="startNewConversation()">New Chat</button>
+    <div class="header-controls">
+      <select class="language-select" id="language-select" aria-label="Preferred language" onchange="setPreferredLanguage(this.value)">
+        <option value="en-IN">English</option>
+        <option value="hi-IN">Hindi</option>
+        <option value="te-IN">Telugu</option>
+        <option value="kn-IN">Kannada</option>
+        <option value="ta-IN">Tamil</option>
+      </select>
+      <button class="header-action" onclick="startNewConversation()">New Chat</button>
+    </div>
   </header>
 
   <main>
@@ -390,7 +427,7 @@
         <p>I can help book, find, update, or cancel your table reservation.</p>
         <div class="prompt-grid">
           <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people tomorrow at 7 PM.')">Book a table</button>
-          <button class="prompt-chip" onclick="usePrompt('Find my booking under the name Anna.')">Find my booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Book a table with wheelchair access and quiet seating.')">Add seating needs</button>
           <button class="prompt-chip" onclick="usePrompt('I need to update my reservation.')">Update a reservation</button>
         </div>
       </div>
@@ -404,6 +441,13 @@
 
   <script>
     let currentSessionId = null;
+    const languageNames = {
+      "en-IN": "English",
+      "hi-IN": "Hindi",
+      "te-IN": "Telugu",
+      "kn-IN": "Kannada",
+      "ta-IN": "Tamil"
+    };
     const dummyLocation = {
       mode: "dummy",
       label: "R-Cafe primary branch",
@@ -431,6 +475,25 @@
       return "desktop-web";
     }
 
+    function setPreferredLanguage(value) {
+      localStorage.setItem("rCafePreferredLanguage", value);
+    }
+
+    function loadPreferredLanguage() {
+      const saved = localStorage.getItem("rCafePreferredLanguage") || "en-IN";
+      const select = document.getElementById("language-select");
+      if (select) select.value = languageNames[saved] ? saved : "en-IN";
+    }
+
+    function getPreferredLanguage() {
+      const select = document.getElementById("language-select");
+      const code = select?.value || localStorage.getItem("rCafePreferredLanguage") || "en-IN";
+      return {
+        code,
+        name: languageNames[code] || "English"
+      };
+    }
+
     function localDateParts(now) {
       return {
         date: [
@@ -451,6 +514,7 @@
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown";
       const locale = navigator.language || "unknown";
       const timestamp = now.toISOString();
+      const preferredLanguage = getPreferredLanguage();
 
       return {
         sessionAttributes: {
@@ -465,7 +529,18 @@
           currentWeekday: now.toLocaleDateString(locale, { weekday: "long" }),
           currentTimestamp: timestamp,
           currentTimestampUtc: timestamp,
+          currentDateDisplay: now.toLocaleDateString(locale, { dateStyle: "full" }),
           timezoneOffsetMinutes: String(-now.getTimezoneOffset()),
+          preferredLanguage: preferredLanguage.code,
+          languageName: preferredLanguage.name,
+          languageSource: "user-selected",
+          specialRequestsSupported: "true",
+          accessibilityCapture: "enabled",
+          managerContactAvailable: "true",
+          managerPhone: "9916437369",
+          managerWhatsApp: "9916437369",
+          phoneCountry: "IN",
+          phoneValidationRule: "10_digits_starts_6_7_8_9_optional_91",
           locationMode: dummyLocation.mode,
           locationLabel: dummyLocation.label,
           locationCity: dummyLocation.city,
@@ -663,6 +738,7 @@
       }
     }
 
+    loadPreferredLanguage();
     createNewSession().catch(() => {});
   </script>
 </body>
