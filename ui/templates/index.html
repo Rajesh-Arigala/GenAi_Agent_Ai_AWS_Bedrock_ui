@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>R-Cafe Booking Assistant</title>
+  <title>R-Cafe DayTrip NightOut Agent</title>
   <style>
     :root {
       --navy: #232f3e;
@@ -184,6 +184,32 @@
     .prompt-chip:hover {
       border-color: var(--orange);
       background: #fffaf2;
+    }
+
+    .prompt-chip.coming-soon {
+      cursor: not-allowed;
+      background: #f8fafc;
+      color: #6b7280;
+      border-style: dashed;
+    }
+
+    .prompt-chip.coming-soon:hover {
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+
+    .chip-kicker {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--orange-dark);
+      font-size: 10px;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .prompt-chip.coming-soon .chip-kicker {
+      color: #7b8491;
     }
 
     .message {
@@ -403,8 +429,8 @@
     <div class="brand">
       <div class="brand-mark">RC</div>
       <div>
-        <h1>R-Cafe Booking Assistant</h1>
-        <div class="subtitle">Table reservations and guest support</div>
+        <h1>R-Cafe DayTrip NightOut Agent</h1>
+        <div class="subtitle">Book your table now. Day trips, nightouts, celebrations, barbeque, and bonfire planning coming soon.</div>
       </div>
     </div>
     <div class="header-controls">
@@ -430,20 +456,24 @@
     <div class="messages" id="messages">
       <div class="welcome" id="welcome-msg">
         <div class="welcome-badge">RC</div>
-        <h2>Welcome to R-Cafe</h2>
-        <p>I can help book, find, update, or cancel your table reservation.</p>
+        <h2>R-Cafe DayTrip NightOut</h2>
+        <p>Table booking is active now. Soon you can plan your outing, lunch, brunch, dinner, celebration, barbeque, bonfire, and nightout at R-Cafe.</p>
         <div class="prompt-grid">
-          <button class="prompt-chip" onclick="usePrompt('Create booking for 4 people tomorrow at 7 PM.')">Create booking</button>
-          <button class="prompt-chip" onclick="usePrompt('Update booking details.')">Update booking</button>
-          <button class="prompt-chip" onclick="usePrompt('Delete booking.')">Delete booking</button>
-          <button class="prompt-chip" onclick="usePrompt('Get booking details.')">Get booking</button>
-          <button class="prompt-chip" onclick="usePrompt('Special needs for your booking: wheelchair access, elderly parking assistance, or high chair.')">Special needs for your booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people tomorrow at 7 PM.')"><span class="chip-kicker">Active</span>Book your table</button>
+          <button class="prompt-chip" onclick="usePrompt('Find my booking under the name Rajesh Arigala.')"><span class="chip-kicker">Active</span>Find booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Update booking details.')"><span class="chip-kicker">Active</span>Update booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Cancel my booking.')"><span class="chip-kicker">Active</span>Cancel booking</button>
+          <button class="prompt-chip" onclick="usePrompt('Special needs for my booking: wheelchair access, elderly parking assistance, or high chair.')"><span class="chip-kicker">Active</span>Special guest needs</button>
+          <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Plan your day trip</button>
+          <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Plan your nightout</button>
+          <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Plan your celebration</button>
+          <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Barbeque & bonfire bash</button>
         </div>
       </div>
     </div>
 
     <div class="input-bar">
-      <textarea id="query-input" rows="1" placeholder="Type your message..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <textarea id="query-input" rows="1" placeholder="Book your table or ask about guest needs..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
       <button class="send-btn" id="send-btn" onclick="sendMessage()">Send</button>
     </div>
   </main>
@@ -697,12 +727,18 @@
       container.innerHTML = `
         <div class="welcome" id="welcome-msg">
           <div class="welcome-badge">RC</div>
-          <h2>Welcome to R-Cafe</h2>
-          <p>I can help book, find, update, or cancel your table reservation.</p>
+          <h2>R-Cafe DayTrip NightOut</h2>
+          <p>Table booking is active now. Soon you can plan your outing, lunch, brunch, dinner, celebration, barbeque, bonfire, and nightout at R-Cafe.</p>
           <div class="prompt-grid">
-            <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people tomorrow at 7 PM.')">Book a table</button>
-            <button class="prompt-chip" onclick="usePrompt('Find my booking under the name Anna.')">Find my booking</button>
-            <button class="prompt-chip" onclick="usePrompt('I need to update my reservation.')">Update a reservation</button>
+            <button class="prompt-chip" onclick="usePrompt('Book a table for 4 people tomorrow at 7 PM.')"><span class="chip-kicker">Active</span>Book your table</button>
+            <button class="prompt-chip" onclick="usePrompt('Find my booking under the name Rajesh Arigala.')"><span class="chip-kicker">Active</span>Find booking</button>
+            <button class="prompt-chip" onclick="usePrompt('Update booking details.')"><span class="chip-kicker">Active</span>Update booking</button>
+            <button class="prompt-chip" onclick="usePrompt('Cancel my booking.')"><span class="chip-kicker">Active</span>Cancel booking</button>
+            <button class="prompt-chip" onclick="usePrompt('Special needs for my booking: wheelchair access, elderly parking assistance, or high chair.')"><span class="chip-kicker">Active</span>Special guest needs</button>
+            <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Plan your day trip</button>
+            <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Plan your nightout</button>
+            <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Plan your celebration</button>
+            <button class="prompt-chip coming-soon" disabled><span class="chip-kicker">Coming soon</span>Barbeque & bonfire bash</button>
           </div>
         </div>`;
     }
