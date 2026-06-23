@@ -15,6 +15,9 @@
       --text: #111827;
       --muted: #6b7280;
       --danger: #b91c1c;
+      --signal-red: #dc2626;
+      --dove-white: #ffffff;
+      --active-yellow: #ffcc00;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -125,14 +128,14 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
-      background: #f8fafc;
+      background: var(--signal-red);
     }
 
     .welcome {
       max-width: 680px;
       margin: 42px auto 0;
       text-align: center;
-      color: var(--muted);
+      color: #111827;
     }
 
     .welcome-badge {
@@ -151,7 +154,7 @@
 
     .welcome h2 {
       font-size: 24px;
-      color: #27384b;
+      color: #ffffff;
       margin-bottom: 8px;
     }
 
@@ -159,6 +162,7 @@
       font-size: 14px;
       line-height: 1.55;
       margin: 0 auto;
+      color: #ffffff;
     }
 
     .prompt-grid {
@@ -169,9 +173,9 @@
     }
 
     .prompt-chip {
-      border: 1px solid #dde3ea;
-      background: #fff;
-      color: #374151;
+      border: 1px solid rgba(17, 24, 39, 0.2);
+      background: var(--active-yellow);
+      color: #000000;
       border-radius: 8px;
       padding: 12px;
       text-align: left;
@@ -179,32 +183,37 @@
       font-size: 13px;
       line-height: 1.35;
       cursor: pointer;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
     }
 
     .prompt-chip:hover {
-      border-color: var(--orange);
-      background: #fffaf2;
+      border-color: #111827;
+      background: #ffd633;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.32);
     }
 
     .prompt-chip.coming-soon {
       cursor: not-allowed;
-      background: #f8fafc;
-      color: #6b7280;
+      background: var(--dove-white);
+      color: #000000;
       border-style: dashed;
+      opacity: 0.78;
     }
 
     .prompt-chip.coming-soon:hover {
-      border-color: #cbd5e1;
-      background: #f8fafc;
+      border-color: rgba(17, 24, 39, 0.24);
+      background: var(--dove-white);
+      box-shadow: none;
     }
 
     .chip-kicker {
-      display: inline-block;
-      margin-bottom: 7px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: #dc2626;
-      color: #fff;
+      display: block;
+      margin: -12px -12px 10px;
+      padding: 7px 12px;
+      border-radius: 8px 8px 0 0;
+      background: #000000;
+      color: var(--active-yellow);
       font-size: 10px;
       font-weight: 850;
       letter-spacing: 0.04em;
@@ -214,6 +223,7 @@
     .prompt-chip.coming-soon .chip-kicker {
       background: transparent;
       color: #7b8491;
+      margin: 0 0 4px;
       padding: 0;
       border-radius: 0;
     }
