@@ -738,7 +738,14 @@
     }
 
     function cleanResponseText(text) {
-      return String(text || "").replace(/^\s*Response:\s*/i, "").trim();
+      let value = String(text || "");
+      value = value.replace(/\r\n/g, "\n");
+      value = value.replace(/\n\s*Tool:\s*[\s\S]*$/i, "");
+      value = value.replace(/^\s*(Response|Assistant|R-Cafe):\s*/i, "");
+      value = value.replace(/^\s*User:\s*/i, "");
+      value = value.replace(/\n\s*(Response|Assistant|R-Cafe):\s*/gi, "\n");
+      value = value.replace(/\n\s*User:\s*/gi, "\n");
+      return value.trim();
     }
 
     function scrollMessages() {

@@ -583,11 +583,14 @@ def lambda_handler(event, context):
                 booking_date_time = f"{booking_date} {booking_time}"
 
                 response = table.get_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': booking_date_time})
-                if 'Item' in response:
+                if 'Item' in response and is_valid_booking_item(response['Item']):
                     res = response['Item']
-                    response_body = f"Found reservation details: Booking ID {res['Booking_ID']} for {res['customer_name']}, party size of {res['party_size']} on date and time {res['Booking_DateTime']}."
+                    response_body = f"Found active reservation details: Booking ID {res['Booking_ID']} for {res['customer_name']}, party size of {res['party_size']} on date and time {res['Booking_DateTime']}."
+                elif 'Item' in response:
+                    flags = ", ".join(booking_status_flags(response['Item']))
+                    response_body = f"Reservation {booking_id} was found but is not an active valid booking for customer-facing actions. Flags: {flags}."
                 else:
-                    response_body = f"No reservation details found matching Booking ID {booking_id} at {booking_date_time}."
+                    response_body = f"No active reservation details found matching Booking ID {booking_id} at {booking_date_time}."
 
         elif function_name == 'updateBooking':
             booking_id = params.get('bookingId')
@@ -741,8 +744,16 @@ def lambda_handler(event, context):
                 booking_date = normalized_date
                 booking_time = normalized_time
                 booking_date_time = f"{booking_date} {booking_time}"
-                table.delete_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': booking_date_time})
-                response_body = f"Reservation {booking_id} on {booking_date_time} has been completely removed."
+                response = table.get_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': booking_date_time})
+                item = response.get('Item')
+                if not item:
+                    response_body = f"No active reservation found matching Booking ID {booking_id} at {booking_date_time}."
+                elif not is_valid_booking_item(item):
+                    flags = ", ".join(booking_status_flags(item))
+                    response_body = f"Delete blocked. Booking {booking_id} is not an active valid booking. Flags: {flags}."
+                else:
+                    table.delete_item(Key={'Booking_ID': booking_id, 'Booking_DateTime': booking_date_time})
+                    response_body = f"Reservation {booking_id} on {booking_date_time} has been completely removed."
 
         elif function_name == 'findBookingByName':
             customer_name = params.get('customerName')
