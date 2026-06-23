@@ -4,6 +4,7 @@ import os
 import calendar
 import re
 import boto3
+from difflib import SequenceMatcher
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from boto3.dynamodb.conditions import Key
@@ -105,6 +106,18 @@ def normalize_customer_lookup_name(value):
         return None
     text = re.sub(r"\s+", " ", str(value).strip())
     return text or None
+
+
+def normalize_name_for_match(value):
+    text = normalize_customer_lookup_name(value) or ""
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def name_parts(value):
+    normalized = normalize_name_for_match(value)
+    return normalized.split() if normalized else []
 
 
 def customer_name_variants(value):
@@ -220,6 +233,79 @@ def query_bookings_by_customer(table, customer_name, booking_date_time=None):
                 matches.append(item)
     matches.sort(key=valid_booking_sort_key, reverse=True)
     return matches
+
+
+def name_match_score(search_name, stored_name):
+    search_norm = normalize_name_for_match(search_name)
+    stored_norm = normalize_name_for_match(stored_name)
+    if not search_norm or not stored_norm:
+        return 0.0
+
+    score = SequenceMatcher(None, search_norm, stored_norm).ratio()
+    search_parts = name_parts(search_name)
+    stored_parts = name_parts(stored_name)
+    search_set = set(search_parts)
+    stored_set = set(stored_parts)
+
+    if search_parts and stored_parts:
+        if search_parts[0] == stored_parts[0]:
+            score += 0.22
+        if search_parts[-1] == stored_parts[-1]:
+            score += 0.18
+
+    if search_set and stored_set:
+        shared_ratio = len(search_set & stored_set) / max(len(search_set), len(stored_set))
+        score += shared_ratio * 0.25
+
+    # Allow first-name-only or last-name-only discovery, but keep it confirmation-gated.
+    if len(search_parts) == 1 and search_parts[0] in stored_set:
+        score = max(score, 0.62)
+
+    return min(score, 1.0)
+
+
+def scan_active_booking_candidates(table):
+    items = []
+    scan_kwargs = {'IndexName': 'r-cafe-index'}
+    while True:
+        response = table.scan(**scan_kwargs)
+        for item in response.get('Items', []):
+            if is_valid_booking_item(item):
+                items.append(item)
+        last_key = response.get('LastEvaluatedKey')
+        if not last_key:
+            break
+        scan_kwargs['ExclusiveStartKey'] = last_key
+    return items
+
+
+def closest_bookings_by_customer(table, customer_name, threshold=0.50, limit=3):
+    seen = set()
+    scored = []
+    for item in scan_active_booking_candidates(table):
+        key = (item.get('Booking_ID'), item.get('Booking_DateTime'))
+        if key in seen:
+            continue
+        score = name_match_score(customer_name, item.get('customer_name'))
+        if score >= threshold:
+            seen.add(key)
+            candidate = dict(item)
+            candidate['_match_score'] = round(score, 2)
+            scored.append(candidate)
+    scored.sort(key=lambda item: (item.get('_match_score', 0), valid_booking_sort_key(item)), reverse=True)
+    return scored[:limit]
+
+
+def format_booking_match(item, include_score=False):
+    text = (
+        f"ID: {item['Booking_ID']} on {item['Booking_DateTime']} "
+        f"for {item['customer_name']} with party size {item['party_size']}"
+    )
+    if item.get('special_requests'):
+        text += f", special requests: {item['special_requests']}"
+    if include_score and item.get('_match_score') is not None:
+        text += f", match score: {item['_match_score']}"
+    return text
 
 
 MONTHS = {
@@ -661,7 +747,16 @@ def lambda_handler(event, context):
                         match_list = [f"ID: {i['Booking_ID']} on {i['Booking_DateTime']}" for i in matches]
                         response_body = "Multiple valid bookings found in the active booking window. Please choose which booking to update: " + ", ".join(match_list)
                     else:
-                        response_body = f"No valid reservation found under name {lookup_customer_name} in the active booking window."
+                        close_matches = closest_bookings_by_customer(table, lookup_customer_name)
+                        if close_matches:
+                            match_list = [format_booking_match(i, include_score=True) for i in close_matches]
+                            response_body = (
+                                f"CLOSE_MATCH_CONFIRMATION_REQUIRED: No exact active booking found for {lookup_customer_name}. "
+                                "Possible close matches were found. Ask the customer to confirm which booking is theirs before updating: "
+                                + "; ".join(match_list)
+                            )
+                        else:
+                            response_body = f"No valid reservation found under exact name {lookup_customer_name} in the active booking window."
                 elif booking_id:
                     lookup_res = table.query(KeyConditionExpression=Key('Booking_ID').eq(booking_id))
                     matches = lookup_res.get('Items', [])
@@ -763,9 +858,18 @@ def lambda_handler(event, context):
             else:
                 items = query_bookings_by_customer(table, customer_name)
                 if not items:
-                    response_body = f"No valid reservation found under name {customer_name} in the active booking window."
+                    close_matches = closest_bookings_by_customer(table, customer_name)
+                    if close_matches:
+                        matches = [format_booking_match(i, include_score=True) for i in close_matches]
+                        response_body = (
+                            f"CLOSE_MATCH_CONFIRMATION_REQUIRED: No exact active booking found for {customer_name}. "
+                            "Possible close matches were found. Ask the customer to confirm which booking is theirs: "
+                            + "; ".join(matches)
+                        )
+                    else:
+                        response_body = f"No valid reservation found under exact name {customer_name} in the active booking window."
                 else:
-                    matches = [f"ID: {i['Booking_ID']} on {i['Booking_DateTime']} for {i['customer_name']} with party size {i['party_size']}" for i in items]
+                    matches = [format_booking_match(i) for i in items]
                     response_body = f"Found the following valid bookings for {customer_name}, latest first: " + ", ".join(matches)
 
         else:

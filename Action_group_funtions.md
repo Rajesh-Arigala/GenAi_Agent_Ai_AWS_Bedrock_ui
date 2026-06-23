@@ -16,6 +16,10 @@ This is the final consolidated AWS Bedrock action-group function reference for t
 - `booking_status` - string; expected values are `active`, `closed-executed`, or `invalid`
 - `special_requests` - optional string
 
+## IAM Permission Note
+
+Closest-name fallback needs `dynamodb:Scan` on the table and/or `r-cafe-index` in addition to `Query`. Exact name lookup uses the `r-cafe-index` GSI. Fuzzy lookup is confirmation-gated and should return suggestions, not confirmed ownership.
+
 ## Booking Status Rules
 
 - `active`: valid current booking in the one-month booking window.
@@ -159,10 +163,10 @@ AWS allows a maximum of 5 parameters per function, so this function uses the com
 ```json
 {
   "name": "findBookingByName",
-  "description": "Find active valid R-Cafe reservations by customer first and last name using the r-cafe-index DynamoDB GSI. Backend Lambda performs case-tolerant lookup variants and returns latest valid active bookings first.",
+  "description": "Find active valid R-Cafe reservations by customer name. Backend Lambda first queries exact/case-tolerant variants using the r-cafe-index GSI. If exact lookup fails, it can return closest-name suggestions from active valid bookings using first-name, last-name, and fuzzy similarity. Close matches require customer confirmation before update/delete/review.",
   "parameters": {
     "customerName": {
-      "description": "Existing customer first and last name to search. Use when the customer does not remember the Booking ID or wants to find booking details by name.",
+      "description": "Existing customer name to search. Prefer first and last name. Partial or misspelled names may return close-match suggestions that must be confirmed by the customer before taking action.",
       "required": "True",
       "type": "string"
     }
