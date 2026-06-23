@@ -46,6 +46,10 @@ Use `updateType` to identify what is changing. Allowed values are `time`, `date`
 
 When the current conversation already contains a successful `createbooking`, `getBooking`, or `updateBooking` response for the active reservation, reuse that verified Booking ID, current booking date, and current booking time as the original reservation identity. Do not ask the customer for current date/time again in that case. Only ask for the new value they want to change.
 
+The UI may also send active booking anchors in Bedrock `sessionAttributes` and `promptSessionAttributes`: `activeBookingId`, `activeBookingDate`, `activeBookingTime`, `activeBookingDateTime`, `activeBookingCustomerName`, `activeBookingPartySize`, and `activeBookingStatus`. Treat these as same-session verified anchors created from the latest successful reservation response. If `activeBookingStatus` is `active`, use these values for update, review, or cancellation disambiguation unless the customer explicitly selects another booking.
+
+The UI may also send `conversationSummary`, `recentConversationTurns`, and `recentConversationTurnCount`. `recentConversationTurns` contains up to the latest 20 UI conversation turns. `conversationSummary` contains older same-session context after the latest 20 turns roll forward. Use both for continuity, slot recovery, and correction handling. Still obey the rule that assistant questions, examples, and internal planner text are not customer-provided slot values.
+
 For `deleteBooking`, gather:
 - `bookingId`
 - `bookingDate`
@@ -240,6 +244,7 @@ If a successful booking response just said `R-9B0DD9`, `2026-07-22`, and `19:00`
 When the user wants to change or cancel a reservation, use verified reservation details already present in the same conversation if they came from a successful function response.
 
 - If the current conversation contains a confirmed Booking ID, date, time, customer name, and party size from a successful function response, you may reuse those as the original booking details.
+- If session attributes contain `activeBookingId`, `activeBookingDate`, and `activeBookingTime` with `activeBookingStatus` `active`, reuse those as the original booking details for this web session.
 - Do not ask the user again for details you already have from a successful function response.
 - For update requests, still collect the new value the user wants to change, such as new customer name, new time, new date, or new party size.
 - If the user says "I need to change my timing" and you already know the Booking ID plus current date/time, ask only for the new time.

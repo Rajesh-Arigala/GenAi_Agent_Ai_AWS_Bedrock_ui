@@ -450,6 +450,9 @@
 
   <script>
     let currentSessionId = null;
+    let activeBooking = null;
+    let recentConversationTurns = [];
+    let conversationSummary = "";
     const languageNames = {
       "en-IN": "English",
       "hi-IN": "Hindi",
@@ -524,6 +527,103 @@
       };
     }
 
+    function summarizeRolledTurn(turn) {
+      const text = `${turn.role}: ${turn.text}`.replace(/\s+/g, " ").trim();
+      if (!text) return;
+      conversationSummary = `${conversationSummary} ${text}`.trim();
+      if (conversationSummary.length > 3000) {
+        conversationSummary = conversationSummary.slice(-3000);
+      }
+    }
+
+    function rememberTurn(role, text) {
+      const compact = cleanResponseText(text).replace(/\s+/g, " ").trim();
+      if (!compact) return;
+      recentConversationTurns.push({ role, text: compact.slice(0, 500) });
+      while (recentConversationTurns.length > 20) {
+        summarizeRolledTurn(recentConversationTurns.shift());
+      }
+    }
+
+    function recentConversationContextAttributes() {
+      if (!recentConversationTurns.length) return {};
+      return {
+        recentConversationTurnCount: String(recentConversationTurns.length),
+        recentConversationTurns: recentConversationTurns
+          .map((turn, index) => `${index + 1}. ${turn.role}: ${turn.text}`)
+          .join("\n")
+          .slice(-7000),
+        conversationSummary: conversationSummary || "",
+        conversationSummaryMode: "rolling_summary_after_20_turns",
+        recentConversationInstruction: "Use conversationSummary for older same-session context and recentConversationTurns for the latest 20 UI turns. Do not treat assistant questions as customer-provided slot values."
+      };
+    }
+
+    function bookingContextAttributes() {
+      if (!activeBooking) return {};
+      return {
+        activeBookingId: activeBooking.bookingId || "",
+        activeBookingDate: activeBooking.bookingDate || "",
+        activeBookingTime: activeBooking.bookingTime || "",
+        activeBookingDateTime: `${activeBooking.bookingDate || ""} ${activeBooking.bookingTime || ""}`.trim(),
+        activeBookingCustomerName: activeBooking.customerName || "",
+        activeBookingPartySize: activeBooking.partySize || "",
+        activeBookingStatus: activeBooking.bookingStatus || "active",
+        activeBookingSource: "ui_response_anchor",
+        activeBookingInstruction: "Use this active booking for update, review, or cancellation in this session unless the customer explicitly selects another booking."
+      };
+    }
+
+    function setActiveBooking(details) {
+      if (!details || !details.bookingId || !details.bookingDate || !details.bookingTime) return;
+      activeBooking = {
+        ...(activeBooking || {}),
+        ...details,
+        bookingStatus: details.bookingStatus || "active"
+      };
+    }
+
+    function updateActiveBookingFromResponse(text) {
+      const value = cleanResponseText(text);
+      if (!value) return;
+
+      const bookingIdMatch = value.match(/\b(R-[A-Z0-9]{6,})\b/i);
+      const dateTimeMatch = value.match(/\b(20\d{2}-\d{2}-\d{2})\s+(\d{2}:\d{2})\b/);
+      const partyMatch = value.match(/(?:party(?:\s+size)?\s*(?:of|is)?|for\s+a\sparty\sof|for)\s*(\d{1,2})\s*(?:people|guests|pax)?/i);
+
+      let customerName = null;
+      const createdNameMatch = value.match(/successfully created,\s*([^.,]+?)\.\s*You have/i);
+      const bookedForNameMatch = value.match(/(?:booked for|reservation details:.*?for)\s+([A-Z][A-Za-z .'-]+?)(?:,|\s+for\s+a\sparty|\s+with\sparty|\.)/i);
+      const updatedNameMatch = value.match(/for\s+([A-Z][A-Za-z .'-]+?)\s+with\s+party\s+size/i);
+      if (createdNameMatch) customerName = createdNameMatch[1].trim();
+      else if (bookedForNameMatch) customerName = bookedForNameMatch[1].trim();
+      else if (updatedNameMatch) customerName = updatedNameMatch[1].trim();
+
+      if (bookingIdMatch && dateTimeMatch) {
+        setActiveBooking({
+          bookingId: bookingIdMatch[1].toUpperCase(),
+          bookingDate: dateTimeMatch[1],
+          bookingTime: dateTimeMatch[2],
+          customerName: customerName || activeBooking?.customerName || "",
+          partySize: partyMatch?.[1] || activeBooking?.partySize || "",
+          bookingStatus: "active"
+        });
+        return;
+      }
+
+      const updateMatch = value.match(/Successfully updated booking\s+(R-[A-Z0-9]{6,}).*?New reservation details:\s*(20\d{2}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+for\s+(.+?)\s+with\s+party\s+size\s+(\d{1,2})/i);
+      if (updateMatch) {
+        setActiveBooking({
+          bookingId: updateMatch[1].toUpperCase(),
+          bookingDate: updateMatch[2],
+          bookingTime: updateMatch[3],
+          customerName: updateMatch[4].trim(),
+          partySize: updateMatch[5],
+          bookingStatus: "active"
+        });
+      }
+    }
+
     function buildSessionState() {
       const now = new Date();
       const local = localDateParts(now);
@@ -532,37 +632,42 @@
       const timestamp = now.toISOString();
       const preferredLanguage = getPreferredLanguage();
 
+      const baseAttributes = {
+        application: "r-cafe-render-ui",
+        channel: "web",
+        timezone,
+        locale,
+        deviceType: detectDeviceType(),
+        screenSize: `${window.screen.width}x${window.screen.height}`,
+        currentDate: local.date,
+        currentTime: local.time,
+        currentWeekday: now.toLocaleDateString(locale, { weekday: "long" }),
+        currentTimestamp: timestamp,
+        currentTimestampUtc: timestamp,
+        currentDateDisplay: now.toLocaleDateString(locale, { dateStyle: "full" }),
+        timezoneOffsetMinutes: String(-now.getTimezoneOffset()),
+        preferredLanguage: preferredLanguage.code,
+        languageName: preferredLanguage.name,
+        languageSource: "user-selected",
+        specialRequestsSupported: "true",
+        accessibilityCapture: "enabled",
+        managerContactAvailable: "true",
+        managerPhone: "9916437369",
+        managerWhatsApp: "9916437369",
+        phoneCountry: "IN",
+        phoneValidationRule: "10_digits_starts_6_7_8_9_optional_91",
+        locationMode: dummyLocation.mode,
+        locationLabel: dummyLocation.label,
+        locationCity: dummyLocation.city,
+        locationPermissionRequired: dummyLocation.permissionRequired,
+        gpsUsed: dummyLocation.gpsUsed,
+        ...bookingContextAttributes(),
+        ...recentConversationContextAttributes()
+      };
+
       return {
-        sessionAttributes: {
-          application: "r-cafe-render-ui",
-          channel: "web",
-          timezone,
-          locale,
-          deviceType: detectDeviceType(),
-          screenSize: `${window.screen.width}x${window.screen.height}`,
-          currentDate: local.date,
-          currentTime: local.time,
-          currentWeekday: now.toLocaleDateString(locale, { weekday: "long" }),
-          currentTimestamp: timestamp,
-          currentTimestampUtc: timestamp,
-          currentDateDisplay: now.toLocaleDateString(locale, { dateStyle: "full" }),
-          timezoneOffsetMinutes: String(-now.getTimezoneOffset()),
-          preferredLanguage: preferredLanguage.code,
-          languageName: preferredLanguage.name,
-          languageSource: "user-selected",
-          specialRequestsSupported: "true",
-          accessibilityCapture: "enabled",
-          managerContactAvailable: "true",
-          managerPhone: "9916437369",
-          managerWhatsApp: "9916437369",
-          phoneCountry: "IN",
-          phoneValidationRule: "10_digits_starts_6_7_8_9_optional_91",
-          locationMode: dummyLocation.mode,
-          locationLabel: dummyLocation.label,
-          locationCity: dummyLocation.city,
-          locationPermissionRequired: dummyLocation.permissionRequired,
-          gpsUsed: dummyLocation.gpsUsed
-        }
+        sessionAttributes: baseAttributes,
+        promptSessionAttributes: baseAttributes
       };
     }
 
@@ -570,6 +675,9 @@
       const res = await fetch("/new_session", { method: "POST" });
       const data = await res.json();
       currentSessionId = data.session_id;
+      activeBooking = null;
+      recentConversationTurns = [];
+      conversationSummary = "";
     }
 
     async function ensureSession() {
@@ -706,6 +814,7 @@
       sendBtn.disabled = true;
 
       const userMessageEl = appendMessage("user", query);
+      rememberTurn("user", query);
       await submitQuery(query, userMessageEl);
       sendBtn.disabled = false;
       queryInput.focus();
@@ -745,7 +854,10 @@
           return;
         }
 
-        appendMessage("agent", data.response || "No response received.");
+        const agentResponse = data.response || "No response received.";
+        updateActiveBookingFromResponse(agentResponse);
+        appendMessage("agent", agentResponse);
+        rememberTurn("agent", agentResponse);
       } catch (e) {
         removeTyping();
         setMessageError(userMessageEl, "Sorry, I could not reach R-Cafe right now. Please try again.", query);
